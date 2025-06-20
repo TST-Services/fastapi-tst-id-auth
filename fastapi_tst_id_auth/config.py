@@ -1,7 +1,8 @@
 """Конфигурация для TST ID Auth"""
 
 from typing import Optional
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class TSTIdConfig(BaseSettings):
@@ -55,6 +56,7 @@ class TSTIdConfig(BaseSettings):
         env_prefix = "TST_ID_"
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Игнорируем дополнительные поля из .env
 
 
 # Глобальный экземпляр конфигурации

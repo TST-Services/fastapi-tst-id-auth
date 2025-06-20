@@ -14,7 +14,8 @@ from .schemas import (
     TSTIdLoginRequest,
     TSTIdLoginResponse,
     TSTIdUserResponse,
-    TSTIdPositionResponse
+    TSTIdPositionResponse,
+    TSTIdUserData
 )
 from .dependencies import (
     get_tst_service,
@@ -43,6 +44,7 @@ __all__ = [
     "TSTIdLoginResponse", 
     "TSTIdUserResponse",
     "TSTIdPositionResponse",
+    "TSTIdUserData",
     
     # Dependencies
     "get_tst_service",
