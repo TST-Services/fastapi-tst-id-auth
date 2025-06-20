@@ -1,0 +1,61 @@
+"""Конфигурация для TST ID Auth"""
+
+from typing import Optional
+from pydantic import BaseSettings, Field
+
+
+class TSTIdConfig(BaseSettings):
+    """Настройки для TST ID авторизации"""
+    
+    # TST ID API settings
+    tst_id_base_url: str = Field(
+        default="https://id.tstservice.tech",
+        description="Базовый URL TST ID API"
+    )
+    tst_id_auth_endpoint: str = Field(
+        default="/api/v1/auth/me",
+        description="Эндпоинт для получения информации о пользователе"
+    )
+    tst_id_timeout: int = Field(
+        default=30,
+        description="Таймаут запросов к TST ID API в секундах"
+    )
+    
+    # Auth settings
+    auto_create_users: bool = Field(
+        default=True,
+        description="Автоматически создавать пользователей при первом входе"
+    )
+    auto_verify_tst_users: bool = Field(
+        default=True,
+        description="Автоматически верифицировать пользователей из TST ID"
+    )
+    link_existing_users: bool = Field(
+        default=True,
+        description="Привязывать TST ID к существующим пользователям по email"
+    )
+    
+    # Cache settings (опционально)
+    cache_user_info: bool = Field(
+        default=False,
+        description="Кешировать информацию о пользователях"
+    )
+    cache_ttl_seconds: int = Field(
+        default=300,
+        description="Время жизни кеша в секундах"
+    )
+    
+    # Logging
+    enable_debug_logging: bool = Field(
+        default=False,
+        description="Включить отладочное логирование"
+    )
+    
+    class Config:
+        env_prefix = "TST_ID_"
+        env_file = ".env"
+        case_sensitive = False
+
+
+# Глобальный экземпляр конфигурации
+default_config = TSTIdConfig() 
