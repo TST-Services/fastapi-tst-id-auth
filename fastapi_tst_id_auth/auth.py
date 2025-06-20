@@ -5,7 +5,7 @@ from uuid import UUID
 
 from .service import TSTIdService
 from .schemas import TSTIdUserData, TSTIdLoginResponse, TSTIdUserResponse, TokenResponse
-from .config import TSTIdConfig
+from .config import TSTIdConfig, default_config
 from .interfaces import (
     UserRepositoryInterface,
     JWTServiceInterface,
@@ -33,7 +33,7 @@ class TSTIdAuthenticator:
         self.jwt_service = jwt_service
         self.tst_service = tst_service or TSTIdService(config)
         self.user_mapper = user_mapper
-        self.config = config or TSTIdService.config
+        self.config = config or default_config
     
     async def authenticate(self, tst_token: str) -> TSTIdLoginResponse:
         """
