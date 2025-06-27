@@ -31,6 +31,11 @@ TST_ID_MAX_RETRIES=3
 TST_ID_RETRY_DELAY=1
 TST_ID_CONNECTION_POOL_SIZE=10
 TST_ID_KEEPALIVE_TIMEOUT=30
+
+# Database settings для устранения проблем с БД
+TST_ID_DB_MAX_RETRIES=5
+TST_ID_DB_RETRY_DELAY=2.0
+TST_ID_DB_OPERATION_TIMEOUT=15
 ```
 
 ### 2. Обновите модель пользователя
@@ -262,9 +267,52 @@ def setup_tst_dependencies():
 
 ## 🚨 Устранение неполадок
 
-### ❌ "Authentication failed: connection was closed in the middle of operation"
+### ❌ "Authentication failed: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.ConnectionDoesNotExistError'>: connection was closed in the middle of operation"
 
-**Причина**: Проблемы с сетевым соединением или нестабильность TST ID API
+**Причина**: Проблемы с соединением к базе данных PostgreSQL во время операций аутентификации
+
+**Решения**:
+
+1. **Настройте retry логику для БД**:
+```bash
+TST_ID_DB_MAX_RETRIES=5
+TST_ID_DB_RETRY_DELAY=2.0
+TST_ID_DB_OPERATION_TIMEOUT=15
+```
+
+2. **Включите отладочное логирование**:
+```bash
+TST_ID_ENABLE_DEBUG_LOGGING=true
+```
+
+3. **Проверьте настройки пула соединений SQLAlchemy**:
+```python
+# В вашем database.py или main.py
+DATABASE_CONFIG = {
+    "pool_size": 20,
+    "max_overflow": 30,
+    "pool_timeout": 30,
+    "pool_recycle": 3600,
+    "pool_pre_ping": True,  # Важно для обнаружения разорванных соединений
+}
+```
+
+4. **Оптимизируйте таймауты PostgreSQL**:
+```bash
+# В postgresql.conf или переменных окружения
+POSTGRES_STATEMENT_TIMEOUT=30000
+POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT=60000
+```
+
+5. **Проверьте соединение с БД**:
+```bash
+# Тест соединения
+pg_isready -h your_host -p 5432 -U your_user
+```
+
+### ❌ "Authentication failed: connection was closed in the middle of operation" (HTTP)
+
+**Причина**: Проблемы с сетевым соединением к TST ID API
 
 **Решения**:
 
@@ -275,18 +323,13 @@ TST_ID_MAX_RETRIES=5
 TST_ID_RETRY_DELAY=2
 ```
 
-2. **Включите отладочное логирование**:
-```bash
-TST_ID_ENABLE_DEBUG_LOGGING=true
-```
-
-3. **Оптимизируйте настройки соединения**:
+2. **Оптимизируйте настройки HTTP соединения**:
 ```bash
 TST_ID_CONNECTION_POOL_SIZE=20
 TST_ID_KEEPALIVE_TIMEOUT=45
 ```
 
-4. **Проверьте доступность TST ID сервиса**:
+3. **Проверьте доступность TST ID сервиса**:
 ```bash
 curl -I https://id.tstservice.tech/api/v1/auth/me
 ```

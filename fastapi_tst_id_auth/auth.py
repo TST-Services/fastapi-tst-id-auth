@@ -1,5 +1,6 @@
 """Логика авторизации TST ID"""
 
+import asyncio
 from typing import Any, Optional, Dict, Union
 from uuid import UUID
 
@@ -53,8 +54,8 @@ class TSTIdAuthenticator:
             # 1. Получаем и валидируем данные от TST ID
             tst_user_data = await self.tst_service.validate_and_get_user_data(tst_token)
             
-            # 2. Находим или создаем пользователя
-            user = await self._find_or_create_user(tst_user_data)
+            # 2. Находим или создаем пользователя (с retry для БД)
+            user = await self._find_or_create_user_with_retry(tst_user_data)
             
             # 3. Генерируем токены
             tokens = self._generate_tokens(user)
@@ -72,6 +73,42 @@ class TSTIdAuthenticator:
         except Exception as e:
             raise TSTIdIntegrationError(f"Authentication failed: {str(e)}")
     
+    async def _find_or_create_user_with_retry(self, tst_data: TSTIdUserData) -> Any:
+        """
+        Находит существующего пользователя или создает нового с retry логикой для БД
+        
+        Args:
+            tst_data: Данные пользователя от TST ID
+            
+        Returns:
+            Пользователь (любой тип, зависит от реализации)
+        """
+        max_retries = self.config.tst_id_db_max_retries
+        retry_delay = self.config.tst_id_db_retry_delay
+        
+        for attempt in range(max_retries):
+            try:
+                return await self._find_or_create_user(tst_data)
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                
+                # Проверяем, что это ошибка соединения с БД
+                if any(keyword in error_str for keyword in [
+                    'connection', 'closed', 'timeout', 'network', 
+                    'asyncpg', 'postgresql', 'database'
+                ]):
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay * (attempt + 1))
+                        continue
+                    else:
+                        raise TSTIdIntegrationError(
+                            f"Database connection failed after {max_retries} attempts: {str(e)}"
+                        )
+                else:
+                    # Не ошибка соединения - пробрасываем дальше
+                    raise
+
     async def _find_or_create_user(self, tst_data: TSTIdUserData) -> Any:
         """
         Находит существующего пользователя или создает нового
@@ -83,7 +120,9 @@ class TSTIdAuthenticator:
             Пользователь (любой тип, зависит от реализации)
         """
         # Ищем пользователя по TST ID
-        user = await self.user_repository.find_by_tst_id(tst_data.tst_id)
+        user = await self._safe_db_operation(
+            self.user_repository.find_by_tst_id, tst_data.tst_id
+        )
         
         if user:
             # Пользователь найден - обновляем его данными из TST ID
@@ -91,7 +130,9 @@ class TSTIdAuthenticator:
         
         # Пользователь не найден - проверяем по email
         if self.config.link_existing_users:
-            existing_user = await self.user_repository.find_by_email(tst_data.email)
+            existing_user = await self._safe_db_operation(
+                self.user_repository.find_by_email, tst_data.email
+            )
             if existing_user:
                 # Есть пользователь с таким email - привязываем TST ID
                 return await self._link_tst_id_to_existing_user(existing_user, tst_data)
@@ -102,6 +143,29 @@ class TSTIdAuthenticator:
         else:
             raise TSTIdAuthError("User not found and auto-creation is disabled")
     
+    async def _safe_db_operation(self, operation, *args, **kwargs):
+        """
+        Безопасное выполнение операции с БД с обработкой ошибок соединения
+        """
+        max_retries = 2  # Меньше попыток для отдельных операций
+        retry_delay = self.config.tst_id_db_retry_delay * 0.5
+        
+        for attempt in range(max_retries):
+            try:
+                return await operation(*args, **kwargs)
+            except Exception as e:
+                error_str = str(e).lower()
+                
+                # Проверяем, что это ошибка соединения с БД
+                if any(keyword in error_str for keyword in [
+                    'connection', 'closed', 'timeout', 'network', 
+                    'asyncpg', 'postgresql', 'database'
+                ]) and attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                else:
+                    raise
+
     async def _update_existing_user(self, user: Any, tst_data: TSTIdUserData) -> Any:
         """Обновляет существующего пользователя данными из TST ID"""
         if self.user_mapper:
@@ -124,7 +188,7 @@ class TSTIdAuthenticator:
             elif hasattr(user, 'deactivate') and not tst_data.is_active:
                 user.deactivate()
         
-        return await self.user_repository.update(user)
+        return await self._safe_db_operation(self.user_repository.update, user)
     
     async def _link_tst_id_to_existing_user(self, user: Any, tst_data: TSTIdUserData) -> Any:
         """Привязывает TST ID к существующему пользователю"""
@@ -148,7 +212,7 @@ class TSTIdAuthenticator:
             if hasattr(user, 'verify_email') and self.config.auto_verify_tst_users:
                 user.verify_email()
         
-        return await self.user_repository.update(user)
+        return await self._safe_db_operation(self.user_repository.update, user)
     
     async def _create_new_user(self, tst_data: TSTIdUserData) -> Any:
         """Создает нового пользователя"""
@@ -163,7 +227,7 @@ class TSTIdAuthenticator:
                 "Please provide user_mapper in TSTIdAuthenticator constructor."
             )
         
-        return await self.user_repository.save(user)
+        return await self._safe_db_operation(self.user_repository.save, user)
     
     def _generate_tokens(self, user: Any) -> TokenResponse:
         """Генерирует токены для пользователя"""

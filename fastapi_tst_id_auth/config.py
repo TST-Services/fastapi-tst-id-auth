@@ -40,6 +40,20 @@ class TSTIdConfig(BaseSettings):
         description="Таймаут keep-alive соединений"
     )
     
+    # Database settings для устранения проблем с БД
+    tst_id_db_max_retries: int = Field(
+        default=3,
+        description="Максимальное количество попыток операций с БД"
+    )
+    tst_id_db_retry_delay: float = Field(
+        default=1.0,
+        description="Задержка между попытками операций с БД в секундах"
+    )
+    tst_id_db_operation_timeout: int = Field(
+        default=10,
+        description="Таймаут операций с БД в секундах"
+    )
+    
     # Auth settings
     auto_create_users: bool = Field(
         default=True,
