@@ -25,6 +25,12 @@ TST_ID_LINK_EXISTING_USERS=true
 TST_ID_CACHE_USER_INFO=false
 TST_ID_CACHE_TTL_SECONDS=300
 TST_ID_ENABLE_DEBUG_LOGGING=false
+
+# Connection settings для устранения проблем с соединением
+TST_ID_MAX_RETRIES=3
+TST_ID_RETRY_DELAY=1
+TST_ID_CONNECTION_POOL_SIZE=10
+TST_ID_KEEPALIVE_TIMEOUT=30
 ```
 
 ### 2. Обновите модель пользователя
@@ -256,39 +262,82 @@ def setup_tst_dependencies():
 
 ## 🚨 Устранение неполадок
 
-### Ошибка "User not found"
+### ❌ "Authentication failed: connection was closed in the middle of operation"
+
+**Причина**: Проблемы с сетевым соединением или нестабильность TST ID API
+
+**Решения**:
+
+1. **Увеличьте таймаут и количество попыток**:
+```bash
+TST_ID_TIMEOUT=60
+TST_ID_MAX_RETRIES=5
+TST_ID_RETRY_DELAY=2
+```
+
+2. **Включите отладочное логирование**:
+```bash
+TST_ID_ENABLE_DEBUG_LOGGING=true
+```
+
+3. **Оптимизируйте настройки соединения**:
+```bash
+TST_ID_CONNECTION_POOL_SIZE=20
+TST_ID_KEEPALIVE_TIMEOUT=45
+```
+
+4. **Проверьте доступность TST ID сервиса**:
+```bash
+curl -I https://id.tstservice.tech/api/v1/auth/me
+```
+
+### ❌ "User not found"
 - Проверьте настройку `TST_ID_AUTO_CREATE_USERS=true`
 - Убедитесь, что `UserMapperAdapter.create_user_from_tst_data()` работает корректно
 
-### Ошибка конфигурации
+### ❌ "Invalid TST ID token"
+- Проверьте срок действия токена TST ID
+- Убедитесь, что токен передается в правильном формате: `Bearer <token>`
+
+### ❌ Ошибка конфигурации
 - Проверьте все переменные окружения `TST_ID_*`
 - Убедитесь, что `.env` файл загружается
 
-### Проблемы с JWT
+### ❌ Проблемы с JWT
 - Проверьте реализацию `JWTServiceAdapter`
 - Убедитесь, что `create_token_pair()` возвращает правильный формат
 
-## 📚 Примеры
+### 🔍 Диагностика проблем
 
-### Минимальная интеграция (Django-style)
-
+1. **Включите подробное логирование**:
 ```python
-# Если у вас простая архитектура
-from fastapi_tst_id_auth import setup_tst_auth
-
-setup_tst_auth(
-    app,
-    user_repository_dependency=get_user_repo,
-    jwt_service_dependency=get_jwt_service,
-    prefix="/auth"
-)
+import logging
+logging.getLogger("fastapi_tst_id_auth").setLevel(logging.DEBUG)
 ```
 
-### Полная интеграция (Clean Architecture)
+2. **Проверьте сетевые настройки**:
+```python
+import aiohttp
+import asyncio
 
-См. пример выше с адаптерами и разделением слоев.
+async def test_connection():
+    async with aiohttp.ClientSession() as session:
+        async with session.get("https://id.tstservice.tech/api/v1/auth/me") as response:
+            print(f"Status: {response.status}")
 
----
+asyncio.run(test_connection())
+```
+
+3. **Мониторинг ошибок**:
+```python
+from fastapi_tst_id_auth.exceptions import TSTIdAPIError
+
+try:
+    # ваш код аутентификации
+    pass
+except TSTIdAPIError as e:
+    print(f"API Error: {e.message}, Status: {e.status_code}")
+```
 
 ## 🎉 Готово к продакшену!
 

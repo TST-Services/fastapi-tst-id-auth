@@ -22,6 +22,24 @@ class TSTIdConfig(BaseSettings):
         description="Таймаут запросов к TST ID API в секундах"
     )
     
+    # Connection settings
+    tst_id_max_retries: int = Field(
+        default=3,
+        description="Максимальное количество попыток подключения"
+    )
+    tst_id_retry_delay: int = Field(
+        default=1,
+        description="Задержка между попытками подключения в секундах"
+    )
+    tst_id_connection_pool_size: int = Field(
+        default=10,
+        description="Размер пула соединений"
+    )
+    tst_id_keepalive_timeout: int = Field(
+        default=30,
+        description="Таймаут keep-alive соединений"
+    )
+    
     # Auth settings
     auto_create_users: bool = Field(
         default=True,

@@ -2,6 +2,7 @@
 
 from typing import Dict, Any, Optional
 import aiohttp
+import asyncio
 from urllib.parse import urljoin
 import logging
 
@@ -22,47 +23,114 @@ class DefaultHTTPClient(HTTPClientInterface):
         self, 
         url: str, 
         headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        max_retries: int = 3,
+        retry_delay: int = 1,
+        connection_pool_size: int = 10,
+        keepalive_timeout: int = 30
     ) -> Dict[str, Any]:
-        """Выполняет GET запрос"""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, 
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    text = await response.text()
-                    raise TSTIdAPIError(
-                        f"HTTP {response.status}: {text}",
-                        status_code=response.status
-                    )
+        """Выполняет GET запрос с улучшенной обработкой ошибок"""
+        
+        for attempt in range(max_retries):
+            try:
+                # Создаем коннектор с настройками для стабильного соединения
+                connector = aiohttp.TCPConnector(
+                    limit=connection_pool_size,
+                    limit_per_host=5,
+                    keepalive_timeout=keepalive_timeout,
+                    enable_cleanup_closed=True
+                )
+                
+                async with aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=aiohttp.ClientTimeout(total=timeout, connect=10)
+                ) as session:
+                    async with session.get(url, headers=headers) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        else:
+                            text = await response.text()
+                            raise TSTIdAPIError(
+                                f"HTTP {response.status}: {text}",
+                                status_code=response.status
+                            )
+                            
+            except (aiohttp.ClientConnectionError, aiohttp.ServerConnectionError) as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise TSTIdAPIError(f"Connection error after {max_retries} attempts: {str(e)}")
+                
+            except aiohttp.ClientTimeout as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise TSTIdAPIError(f"Request timeout after {max_retries} attempts: {str(e)}")
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise TSTIdAPIError(f"Unexpected error: {str(e)}")
+        
+        raise TSTIdAPIError("Failed to complete request after all retries")
     
     async def post(
         self, 
         url: str, 
         data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        max_retries: int = 3,
+        retry_delay: int = 1,
+        connection_pool_size: int = 10,
+        keepalive_timeout: int = 30
     ) -> Dict[str, Any]:
-        """Выполняет POST запрос"""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url, 
-                json=data,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    text = await response.text()
-                    raise TSTIdAPIError(
-                        f"HTTP {response.status}: {text}",
-                        status_code=response.status
-                    )
+        """Выполняет POST запрос с улучшенной обработкой ошибок"""
+        
+        for attempt in range(max_retries):
+            try:
+                # Создаем коннектор с настройками для стабильного соединения
+                connector = aiohttp.TCPConnector(
+                    limit=connection_pool_size,
+                    limit_per_host=5,
+                    keepalive_timeout=keepalive_timeout,
+                    enable_cleanup_closed=True
+                )
+                
+                async with aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=aiohttp.ClientTimeout(total=timeout, connect=10)
+                ) as session:
+                    async with session.post(url, json=data, headers=headers) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        else:
+                            text = await response.text()
+                            raise TSTIdAPIError(
+                                f"HTTP {response.status}: {text}",
+                                status_code=response.status
+                            )
+                            
+            except (aiohttp.ClientConnectionError, aiohttp.ServerConnectionError) as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise TSTIdAPIError(f"Connection error after {max_retries} attempts: {str(e)}")
+                
+            except aiohttp.ClientTimeout as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise TSTIdAPIError(f"Request timeout after {max_retries} attempts: {str(e)}")
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise TSTIdAPIError(f"Unexpected error: {str(e)}")
+        
+        raise TSTIdAPIError("Failed to complete request after all retries")
 
 
 class DefaultLogger(LoggerInterface):
@@ -132,7 +200,11 @@ class TSTIdService:
             response_data = await self.http_client.get(
                 url=self.auth_url,
                 headers=headers,
-                timeout=self.config.tst_id_timeout
+                timeout=self.config.tst_id_timeout,
+                max_retries=self.config.tst_id_max_retries,
+                retry_delay=self.config.tst_id_retry_delay,
+                connection_pool_size=self.config.tst_id_connection_pool_size,
+                keepalive_timeout=self.config.tst_id_keepalive_timeout
             )
             
             # Валидируем ответ через Pydantic
